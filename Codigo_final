@@ -1,0 +1,104 @@
+#include<DHTesp.h>
+#include "WiFi.h"
+#include "PubSubClient.h"
+#include "Arduino_JSON.h"
+
+//const pin da ESP32; const nome da rede, senha e link vinculado
+const int relayPin1 = 14;
+const int relayPin2 = 23;
+const char* ssid = "Wokwi-GUEST";
+const char* password = "";
+
+//configurando mqtt broker
+int port = 1883;
+const char* server = "broker.hivemq.com";
+const char* topico = "sa3_mirele";
+
+JSONVar data;
+DHTesp dhtSensor;
+WiFiClient espClient;
+PubSubClient mqttClient(espClient);
+
+void setup() {
+
+  // Conectando WiFi:
+  Serial.begin(115200);
+  Serial.println("Iniciando Setup!");
+
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("Conectado à rede wifi");
+
+  //Conexão com o broker
+  Serial.println("Conectando ao Broker");
+  mqttClient.setServer(server, port);
+  char* clientId = "clientId-BM7V3VNIRk";
+
+  mqttClient.connect(clientId);
+  mqttClient.subscribe(topico);
+
+  while (!mqttClient.connected()) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("Broker conectado");
+
+  Serial.println("Finalizando Setup");
+  Serial.println("-----------------");
+
+  dhtSensor.setup(13, DHTesp::DHT22);
+
+  pinMode( relayPin1, OUTPUT);
+  pinMode( relayPin2, OUTPUT);
+}
+
+void loop() {
+  const int relayPin1 = 14;
+  const int relayPin2 = 23;
+
+  //capturando temperatura e umidade
+  float temperatura = dhtSensor.getTemperature();
+  float umidade = dhtSensor.getHumidity();
+
+  data["temperatura"] = temperatura;
+  data["umidade"] = umidade;
+  String jsonString = JSON.stringify(data);
+
+  if (!temperatura && !umidade){
+    Serial.println("Problemas ao enviar mensagem!"); 
+  } else {
+
+  //imprimindo dados capturados
+  Serial.println("Temperatura:" + String(temperatura, 2) + "°C");
+  Serial.println("Umidade:" + String(umidade, 1) + "%");
+  Serial.println("xxxxxxxxxxxxxxxxxxxxxxxx");
+
+  delay(1000);
+  //Ligar Relés
+  digitalWrite( relayPin1, HIGH);
+  delay( 1000);
+  digitalWrite( relayPin1, LOW);
+  delay( 1000);
+  delay(1000);
+
+  //Desligar Relés
+  digitalWrite( relayPin2, HIGH);
+  delay( 1000);
+  digitalWrite( relayPin2, LOW);
+  delay( 1000);
+  delay(1000);
+  }
+  
+  boolean msg = mqttClient.publish(topico, jsonString.c_str());;
+  if (!msg) {
+    Serial.println("Problemas ao enviar msg");
+    mqttClient.connect("clientId-BM7V3VNIRk");
+    mqttClient.subscribe(topico);
+  } else {
+    Serial.println("Mensagem enviada com sucesso");
+  }
+  delay(1000);
+}
